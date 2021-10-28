@@ -7,7 +7,7 @@
 /.vscode/launch.json
 /.vscode/ipch
 .DS_Store
-/kicad/gerbers
+/kicad/gerber
 /kicad/*-bak
 /kicad/*.zip
 /kicad/libs/*.bck
