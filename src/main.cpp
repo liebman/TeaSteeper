@@ -50,12 +50,12 @@ static RotaryEncoder encoder(PIN_ROTB, PIN_ROTA);
 enum class State {
   IDLE,
   STARTING,
-  STEAPING,
+  STEEPING,
   STOPPING
 };
 
 static State    state      = State::IDLE;
-static uint32_t steap_time = 60;
+static uint32_t steep_time = 60;
 static time_t   start_time = 0;
 
 static bool syncing = true;
@@ -68,7 +68,7 @@ void setup()
   dlog.info(TAG, "setup: Starting!");
 
   button.begin();
-  encoder.setPosition(steap_time);
+  encoder.setPosition(steep_time);
 
   dlog.info(TAG, "setup: io begin");
   io.begin();
@@ -101,10 +101,10 @@ void loop()
     pos = 0;
     encoder.setPosition(0);
   }
-  if (pos != steap_time)
+  if (pos != steep_time)
   {
-    steap_time = pos;
-    dlog.info(TAG, "loop: steap time = %lu", steap_time);
+    steep_time = pos;
+    dlog.info(TAG, "loop: steep time = %lu", steep_time);
   }
 
   if (state == State::IDLE)
@@ -114,21 +114,21 @@ void loop()
       dlog.info(TAG, "loop: state now STARTING");
       state = State::STARTING;
       m.step(UStepper::FORWARD, 350, nullptr, [](){
-        dlog.info(TAG, "loop: state now STEAPING");
+        dlog.info(TAG, "loop: state now STEEPING");
         m.off(nullptr, 1000);
         start_time = time(nullptr);
-        state = State::STEAPING;
+        state = State::STEEPING;
       }, 1000);
     }
   }
-  else if (state == State::STEAPING)
+  else if (state == State::STEEPING)
   {
     static time_t last_update = 0;
     time_t now = time(nullptr);
-    uint32_t time_left = steap_time - (now - start_time);
+    uint32_t time_left = steep_time - (now - start_time);
     if (now > last_update)
     {
-      dlog.info(TAG, "loop: STEAPING time left = %ld", time_left);
+      dlog.info(TAG, "loop: STEEPING time left = %ld", time_left);
       last_update = now;
     }
     if (button.isPressed() || time_left<1)
