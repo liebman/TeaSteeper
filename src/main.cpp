@@ -182,35 +182,46 @@ void loop()
     steep_time = pos;
   }
 
-  if (state == State::IDLE)
+  switch(state)
   {
-    if (button.isPressed())
+    case State::IDLE:
     {
-      dlog.info(TAG, "loop: state now STARTING");
-      setState(State::STARTING);
-      m.step(UStepper::FORWARD, 350, nullptr, [](){
-        dlog.info(TAG, "loop: state now STEEPING");
-        m.off(nullptr, 1000);
-        state_time = time(nullptr);
-        setState(State::STEEPING);
-      }, 1000);
+      if (button.wasPressed())
+      {
+        dlog.info(TAG, "loop: state now STARTING");
+        setState(State::STARTING);
+        m.step(UStepper::FORWARD, 350, nullptr, [](){
+          if (state == State::STARTING)
+          {
+            dlog.info(TAG, "loop: state now STEEPING");
+            m.off(nullptr, 1000);
+            state_time = time(nullptr);
+            setState(State::STEEPING);
+          }
+        }, 1000);
+      }
+      break;
     }
-  }
-  else if (state == State::STEEPING)
-  {
-    time_t now = time(nullptr);
-    uint32_t time_left = steep_time - (now - state_time);
-    if (button.isPressed() || time_left<1)
+    case State::STARTING:
+    case State::STEEPING:
     {
-      dlog.info(TAG, "loop: state now STOPPING");
-      setState(State::STOPPING);
-      m.step(UStepper::REVERSE, 500, nullptr, [](){
-        dlog.info(TAG, "loop: state now IDLE");
-        m.off(nullptr, 1000);
-        state_time = 0;
-        setState(State::IDLE);
-      }, 1000);
+      time_t now = time(nullptr);
+      uint32_t time_left = steep_time - (now - state_time);
+      if (button.wasPressed() || time_left<1)
+      {
+        dlog.info(TAG, "loop: state now STOPPING");
+        setState(State::STOPPING);
+        m.step(UStepper::REVERSE, 500, nullptr, [](){
+          dlog.info(TAG, "loop: state now IDLE");
+          m.off(nullptr, 1000);
+          state_time = 0;
+          setState(State::IDLE);
+        }, 1000);
+      }
+      break;
     }
+    case State::STOPPING:
+      break;
   }
 
   delay(1);
