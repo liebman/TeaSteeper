@@ -81,7 +81,7 @@ static void displayTime(uint32_t value)
   uint8_t seconds = value % 60;
   tft.setCursor(0, 0, 8);
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  tft.printf("%3d:%02d", minutes, seconds);
+  tft.printf("%01d:%02d", minutes, seconds);
 }
 
 static void displayTask(void* data)
@@ -166,9 +166,9 @@ void loop()
   {
     pos = 0;
     encoder->setPosition(pos);
-  } else if (pos > 600)
+  } else if (pos > 599)
   {
-    pos = 600;
+    pos = 599;
     encoder->setPosition(pos);
   }
 
@@ -176,17 +176,6 @@ void loop()
   {
     steep_time = pos;
   }
-
-#if 0
-  uint8_t minutes = steep_time / 60;
-  uint8_t seconds = steep_time % 60;
-  if (state != State::STEEPING)
-  {
-    tft.setCursor(0, 0, 7);
-    tft.setTextColor(TFT_WHITE, TFT_BLACK);
-    tft.printf("%3d:%02d", minutes, seconds);
-  }
-#endif
 
   if (state == State::IDLE)
   {
