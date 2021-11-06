@@ -32,6 +32,8 @@
 #include "EasyButton.h"
 #include "RotaryEncoder.h"
 
+extern void screensaverLife(TFT_eSPI* tft);
+
 static const char* TAG = "main";
 static const uint8_t PIN_ULIM = 4;
 static const uint8_t PIN_M1A = 25;
@@ -54,14 +56,15 @@ enum class State {
   IDLE,
   STARTING,
   STEEPING,
-  STOPPING
+  STOPPING,
+  SAVER
 };
 
-static volatile State    state      = State::IDLE;
-static volatile time_t   state_time = 0;
-static volatile uint32_t steep_time = 60;
-
-static bool syncing = true;
+static volatile State    state        = State::IDLE;
+static volatile time_t   state_time   = 0;
+static volatile uint32_t steep_time   = 60;
+static volatile bool     clear_screen = false;
+static volatile bool     syncing      = true;
 
 static void displayInit()
 {
@@ -97,6 +100,12 @@ static void displayTask(void* data)
   dlog.info(TAG, "displayTask");
   while(true)
   {
+    if (clear_screen)
+    {
+      clear_screen = false;
+      tft.fillScreen(TFT_BLACK);
+    }
+
     switch (state)
     {
       case State::IDLE:
@@ -115,8 +124,21 @@ static void displayTask(void* data)
       case State::STOPPING:
         displayTime(0, TFT_RED);
         break;
+      case State::SAVER:
+        screensaverLife(&tft);
+        break;
     }
     delay(10);
+  }
+}
+
+static void setState(State s, bool clear = false)
+{
+  state = s;
+  state_time = time(nullptr);
+  if (clear)
+  {
+    clear_screen = true;
   }
 }
 
@@ -131,7 +153,7 @@ void setup()
   button.begin();
   encoder = new RotaryEncoder(PIN_ROTB, PIN_ROTA, RotaryEncoder::LatchMode::FOUR3);
   encoder->setPosition(steep_time);
-
+  setState(State::IDLE);
   dlog.info(TAG, "setup: io begin");
   io.begin();
   dlog.info(TAG, "setup: m begin");
@@ -155,12 +177,6 @@ void setup()
   dlog.info(TAG, "setup: done");
 }
 
-static void setState(State s)
-{
-  state = s;
-  state_time = time(nullptr);
-}
-
 void loop()
 {
   encoder->tick();
@@ -177,17 +193,36 @@ void loop()
     encoder->setPosition(pos);
   }
 
+  if (state == State::SAVER)
+  {
+    if (pos != steep_time || button.wasPressed())
+    {
+      dlog.info(TAG, "loop: stop screensaver");
+      setState(State::IDLE, true);
+      encoder->setPosition(steep_time);
+      return;
+    }
+  }
+
   if (pos != steep_time)
   {
     steep_time = pos;
   }
 
+  time_t now = time(nullptr);
+  
   switch(state)
   {
     case State::IDLE:
     {
       if (button.wasPressed())
       {
+        if (steep_time == 42)
+        {
+          dlog.info(TAG, "loop: 42! starting screensaver!");
+          setState(State::SAVER, true);
+          break;
+        }
         dlog.info(TAG, "loop: state now STARTING");
         setState(State::STARTING);
         m.step(UStepper::FORWARD, 350, nullptr, [](){
@@ -195,17 +230,25 @@ void loop()
           {
             dlog.info(TAG, "loop: state now STEEPING");
             m.off(nullptr, 1000);
-            state_time = time(nullptr);
             setState(State::STEEPING);
           }
         }, 1000);
+      }
+      else
+      {
+        // screen saver starts after 5 minutes idle
+        if ((now - state_time) > 300)
+        {
+          dlog.info(TAG, "loop: idle! starting screensaver!");
+          setState(State::SAVER, true);
+          break;
+        }
       }
       break;
     }
     case State::STARTING:
     case State::STEEPING:
     {
-      time_t now = time(nullptr);
       uint32_t time_left = steep_time - (now - state_time);
       if (button.wasPressed() || time_left<1)
       {
