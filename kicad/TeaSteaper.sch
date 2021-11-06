@@ -4,9 +4,9 @@ EELAYER END
 $Descr A 11000 8500
 encoding utf-8
 Sheet 1 1
-Title "TeaSteaper"
-Date "2021-10-21"
-Rev "1.0"
+Title "TeaSteeper"
+Date "2021-11-03"
+Rev "1.1"
 Comp "Christopher B. Liebman"
 Comment1 ""
 Comment2 ""
@@ -823,7 +823,7 @@ F 1 "Stepper" H 9330 5201 50  0000 L CNN
 F 2 "TeaMaker:JST_XH_B5B-XH-A_1x05_P2.50mm_Vertical" H 9250 5250 50  0001 C CNN
 F 3 "~" H 9250 5250 50  0001 C CNN
 	1    9250 5250
-	1    0    0    -1  
+	1    0    0    1   
 $EndComp
 Wire Wire Line
 	9050 5150 8650 5150
