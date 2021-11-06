@@ -26,7 +26,7 @@
 static const char* TAG = "screensaver";
 
 // Maximum number of generations until the screen is refreshed
-static const uint16_t NUMGEN = 600;
+static const uint16_t NUMGEN = 500;
 
 static const uint32_t CELLXY = 2;
 static const uint32_t GRIDX = TFT_HEIGHT/CELLXY;
@@ -62,17 +62,16 @@ static void drawGrid(TFT_eSPI* tft) {
       if (((grid[x][y]) != (newgrid[x][y])) ||  (getNumberOfNeighbors(x, y) != n)) {
         if (newgrid[x][y] == 1)
         {
-          //color = 0xFFFF; //random(0xFFFF);
           switch (n)
           {
             case 2:
-              color = TFT_YELLOW;
+              color = tft->color565(255, 255, 0); // yellow
               break;
             case 3:
-              color = TFT_GREEN;
+              color = tft->color565(0, 255, 0); // Green
               break;
             default:
-              color = TFT_RED;
+              color = tft->color565(255, 0, 0); // Red
               break;
           }
         }

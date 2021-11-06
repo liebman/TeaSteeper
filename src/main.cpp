@@ -179,8 +179,21 @@ void setup()
 
 void loop()
 {
-  encoder->tick();
   button.read();
+  // if the screen saver is on ignore the encoder and 
+  // go back to idle when the button is pressed
+  if (state == State::SAVER)
+  {
+    if (button.wasPressed())
+    {
+      dlog.info(TAG, "loop: stop screensaver");
+      setState(State::IDLE, true);
+      return;
+    }
+    return;
+  }
+
+  encoder->tick();
 
   long pos = encoder->getPosition();
   if (pos < 0)
@@ -193,16 +206,6 @@ void loop()
     encoder->setPosition(pos);
   }
 
-  if (state == State::SAVER)
-  {
-    if (pos != steep_time || button.wasPressed())
-    {
-      dlog.info(TAG, "loop: stop screensaver");
-      setState(State::IDLE, true);
-      encoder->setPosition(steep_time);
-      return;
-    }
-  }
 
   if (pos != steep_time)
   {
@@ -225,7 +228,7 @@ void loop()
         }
         dlog.info(TAG, "loop: state now STARTING");
         setState(State::STARTING);
-        m.step(UStepper::FORWARD, 350, nullptr, [](){
+        m.step(UStepper::FORWARD, 250, nullptr, [](){
           if (state == State::STARTING)
           {
             dlog.info(TAG, "loop: state now STEEPING");
