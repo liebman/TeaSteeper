@@ -75,13 +75,18 @@ static void displayInit()
   tft.setCursor(0, 0);
 }
 
-static void displayTime(uint32_t value)
+static void displayTime(uint32_t value, uint16_t color)
 {
+  char buf[8];
   uint8_t minutes = value / 60;
   uint8_t seconds = value % 60;
-  tft.setCursor(0, 0, 8);
-  tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  tft.printf("%01d:%02d", minutes, seconds);
+  tft.setTextColor(color, TFT_BLACK);
+  tft.setTextFont(8);
+  snprintf(buf, sizeof(buf)-1, "%01d:%02d", minutes, seconds);
+  int16_t tw = tft.textWidth(buf);
+  int32_t x = (TFT_HEIGHT - tw) / 2;
+  int32_t y = (TFT_WIDTH - 75) / 2;
+  tft.drawString(buf, x, y);
 }
 
 static void displayTask(void* data)
@@ -95,20 +100,20 @@ static void displayTask(void* data)
     switch (state)
     {
       case State::IDLE:
-        displayTime(steep_time);
+        displayTime(steep_time, TFT_WHITE);
         break;
       case State::STARTING:
-        displayTime(steep_time);
+        displayTime(steep_time, TFT_GREEN);
         break;
       case State::STEEPING:
       {
         time_t now = time(nullptr);
         uint32_t time_left = steep_time - (now - state_time);
-        displayTime(time_left);
+        displayTime(time_left, TFT_WHITE);
         break;
       }
       case State::STOPPING:
-        displayTime(steep_time);
+        displayTime(0, TFT_RED);
         break;
     }
     delay(10);
