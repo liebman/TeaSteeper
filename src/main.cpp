@@ -22,7 +22,9 @@
  * SOFTWARE.
  */
 
-#include "Arduino.h"
+#include <Arduino.h>
+#include <SPI.h>
+#include <TFT_eSPI.h>
 #include "Log.h"
 #include "DLogPrintWriter.h"
 #include "UStepperGPIO.h"
@@ -45,7 +47,8 @@ DLog& dlog = DLog::getLog();
 static UStepperGPIO io(PIN_M1A, PIN_M1B, PIN_M1C, PIN_M1D, PIN_ULIM);
 static UStepper m(io);
 static EasyButton button(PIN_ROTSW);
-static RotaryEncoder encoder(PIN_ROTB, PIN_ROTA);
+static RotaryEncoder *encoder;
+static TFT_eSPI tft;
 
 enum class State {
   IDLE,
@@ -54,11 +57,63 @@ enum class State {
   STOPPING
 };
 
-static State    state      = State::IDLE;
-static uint32_t steep_time = 60;
-static time_t   start_time = 0;
+static volatile State    state      = State::IDLE;
+static volatile time_t   state_time = 0;
+static volatile uint32_t steep_time = 60;
 
 static bool syncing = true;
+
+static void displayInit()
+{
+  dlog.info(TAG, "displayInit");
+  //Set up the display
+  tft.init();
+  tft.setRotation(3);
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextSize(1);
+  tft.setTextColor(TFT_WHITE);
+  tft.setCursor(0, 0);
+}
+
+static void displayTime(uint32_t value)
+{
+  uint8_t minutes = value / 60;
+  uint8_t seconds = value % 60;
+  tft.setCursor(0, 0, 8);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.printf("%3d:%02d", minutes, seconds);
+}
+
+static void displayTask(void* data)
+{
+  (void)data;
+  State  last_state  = state;
+  time_t last_update = 0;
+  dlog.info(TAG, "displayTask");
+  while(true)
+  {
+    switch (state)
+    {
+      case State::IDLE:
+        displayTime(steep_time);
+        break;
+      case State::STARTING:
+        displayTime(steep_time);
+        break;
+      case State::STEEPING:
+      {
+        time_t now = time(nullptr);
+        uint32_t time_left = steep_time - (now - state_time);
+        displayTime(time_left);
+        break;
+      }
+      case State::STOPPING:
+        displayTime(steep_time);
+        break;
+    }
+    delay(10);
+  }
+}
 
 void setup()
 {
@@ -67,8 +122,10 @@ void setup()
   delay(200);
   dlog.info(TAG, "setup: Starting!");
 
+  displayInit();
   button.begin();
-  encoder.setPosition(steep_time);
+  encoder = new RotaryEncoder(PIN_ROTB, PIN_ROTA, RotaryEncoder::LatchMode::FOUR3);
+  encoder->setPosition(steep_time);
 
   dlog.info(TAG, "setup: io begin");
   io.begin();
@@ -87,61 +144,80 @@ void setup()
   dlog.info(TAG, "setup: limit=%s", io.isUpperLimit() ? "true" : "false");
   m.off([](){
     dlog.info(TAG, "m.off done!");
-    }, 1000);
+  }, 1000);
+  dlog.info(TAG, "setup: create display task");
+  xTaskCreatePinnedToCore(displayTask, "display", 4096, nullptr, 1, nullptr, 1);
   dlog.info(TAG, "setup: done");
+}
+
+static void setState(State s)
+{
+  state = s;
+  state_time = time(nullptr);
 }
 
 void loop()
 {
-  encoder.tick();
+  encoder->tick();
   button.read();
-  long pos = encoder.getPosition();
+
+  long pos = encoder->getPosition();
   if (pos < 0)
   {
     pos = 0;
-    encoder.setPosition(0);
+    encoder->setPosition(pos);
+  } else if (pos > 600)
+  {
+    pos = 600;
+    encoder->setPosition(pos);
   }
+
   if (pos != steep_time)
   {
     steep_time = pos;
-    dlog.info(TAG, "loop: steep time = %lu", steep_time);
   }
+
+#if 0
+  uint8_t minutes = steep_time / 60;
+  uint8_t seconds = steep_time % 60;
+  if (state != State::STEEPING)
+  {
+    tft.setCursor(0, 0, 7);
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    tft.printf("%3d:%02d", minutes, seconds);
+  }
+#endif
 
   if (state == State::IDLE)
   {
     if (button.isPressed())
     {
       dlog.info(TAG, "loop: state now STARTING");
-      state = State::STARTING;
+      setState(State::STARTING);
       m.step(UStepper::FORWARD, 350, nullptr, [](){
         dlog.info(TAG, "loop: state now STEEPING");
         m.off(nullptr, 1000);
-        start_time = time(nullptr);
-        state = State::STEEPING;
+        state_time = time(nullptr);
+        setState(State::STEEPING);
       }, 1000);
     }
   }
   else if (state == State::STEEPING)
   {
-    static time_t last_update = 0;
     time_t now = time(nullptr);
-    uint32_t time_left = steep_time - (now - start_time);
-    if (now > last_update)
-    {
-      dlog.info(TAG, "loop: STEEPING time left = %ld", time_left);
-      last_update = now;
-    }
+    uint32_t time_left = steep_time - (now - state_time);
     if (button.isPressed() || time_left<1)
     {
       dlog.info(TAG, "loop: state now STOPPING");
-      state = State::STOPPING;
+      setState(State::STOPPING);
       m.step(UStepper::REVERSE, 500, nullptr, [](){
         dlog.info(TAG, "loop: state now IDLE");
         m.off(nullptr, 1000);
-        start_time = 0;
-        state = State::IDLE;
+        state_time = 0;
+        setState(State::IDLE);
       }, 1000);
     }
   }
+
   delay(1);
 }
