@@ -1,0 +1,64 @@
+name: PlatformIO CI
+
+on: [push]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/setup-node@v2
+    - uses: actions/checkout@v2
+    - name: Cache pip
+      uses: actions/cache@v2
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    - name: Cache PlatformIO
+      uses: actions/cache@v2
+      with:
+        path: ~/.platformio
+        key: ${{ runner.os }}-${{ hashFiles('**/lockfiles') }}
+    - name: Set up Python
+      uses: actions/setup-python@v2
+    - name: Install PlatformIO
+      run: |
+        python -m pip install --upgrade pip
+        pip install --upgrade platformio
+    - name: Run PlatformIO
+      run: pio run
+
+# disable this as it moves the tag and doing a pull afterwords complains
+#    - name: Pre-release build if main branch
+#      uses: "marvinpinto/action-automatic-releases@latest"
+#      if: github.ref == 'refs/heads/main'
+#      with:
+#        repo_token: "${{ secrets.GITHUB_TOKEN }}"
+#        automatic_release_tag: "latest"
+#        prerelease: true
+#        title: "Development Build"
+#        files: |
+#          .pio/build/default/firmware.bin
+
+    - name: Check Tag for release
+      id: check-tag
+      run: |
+        if [[ ${{ github.event.ref }} =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo ::set-output name=isrel::true
+        fi
+        if [[ ${{ github.event.ref }} =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+-.*$ ]]; then
+            echo ::set-output name=ispre::true
+        fi
+
+    - name: Release build on automatic_release_tag
+      uses: "marvinpinto/action-automatic-releases@latest"
+      if: steps.check-tag.outputs.isrel == 'true' || steps.check-tag.outputs.ispre == 'true'
+      with:
+        repo_token: "${{ secrets.GITHUB_TOKEN }}"
+        #draft: true
+        prerelease: ${{ steps.check-tag.outputs.ispre }}
+        files: |
+          .pio/build/default/firmware.bin

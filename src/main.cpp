@@ -31,6 +31,8 @@
 #include "UStepper.h"
 #include "EasyButton.h"
 #include "RotaryEncoder.h"
+#include "ConfigPortal.h"
+#include "version.h"
 
 extern void screensaverLife(TFT_eSPI* tft);
 
@@ -51,13 +53,16 @@ static UStepper m(io);
 static EasyButton button(PIN_ROTSW);
 static RotaryEncoder *encoder;
 static TFT_eSPI tft;
+static ConfigPortal cp;
 
 enum class State {
   IDLE,
   STARTING,
   STEEPING,
   STOPPING,
-  SAVER
+  SAVER,
+  SPLASH,
+  CONFIG
 };
 
 static volatile State    state        = State::IDLE;
@@ -66,16 +71,19 @@ static volatile uint32_t steep_time   = 60;
 static volatile bool     clear_screen = false;
 static volatile bool     syncing      = true;
 
-static void displayInit()
+static const char* stateName(State s)
 {
-  dlog.info(TAG, "displayInit");
-  //Set up the display
-  tft.init();
-  tft.setRotation(3);
-  tft.fillScreen(TFT_BLACK);
-  tft.setTextSize(1);
-  tft.setTextColor(TFT_WHITE);
-  tft.setCursor(0, 0);
+  switch (s)
+  {
+    case State::IDLE:     return "IDLE";
+    case State::STARTING: return "STARTING";
+    case State::STEEPING: return "STEEPING";
+    case State::STOPPING: return "STOPPING";
+    case State::SAVER:    return "SAVER";
+    case State::SPLASH:   return "SPLASH";
+    case State::CONFIG:   return "CONFIG";
+    default:              return "UNKNOWN";
+  }
 }
 
 static void displayTime(uint32_t value, uint16_t color)
@@ -92,10 +100,40 @@ static void displayTime(uint32_t value, uint16_t color)
   tft.drawString(buf, x, y);
 }
 
+static void displaySplash()
+{
+  uint16_t green  = tft.color565(0, 255, 0);
+  uint16_t orange = tft.color565(255, 165, 0);
+
+  tft.setCursor(0, 2, 4);
+  tft.setTextColor(green, TFT_BLACK);
+  tft.println("TeaSteeper");
+  tft.setTextFont(2);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.println(BUILD_VERSION);
+  tft.println();
+  tft.print("For ");
+  tft.setTextColor(orange, TFT_BLACK);
+  tft.println("Liz Liebman");
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.println("Christmas 2021");
+}
+
+static void displayConfig()
+{
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.setCursor(0, 2, 4);
+  tft.println("Config Active");
+  tft.setTextFont(2);
+  tft.println(BUILD_VERSION);
+  tft.setTextFont(4);
+  tft.setTextColor(tft.color565(0, 255, 0), TFT_BLACK);
+  tft.println("SSID: TeaSteeper");
+}
+
 static void displayTask(void* data)
 {
   (void)data;
-  State  last_state  = state;
   time_t last_update = 0;
   dlog.info(TAG, "displayTask");
   while(true)
@@ -112,28 +150,49 @@ static void displayTask(void* data)
         displayTime(steep_time, TFT_WHITE);
         break;
       case State::STARTING:
-        displayTime(steep_time, TFT_GREEN);
+        displayTime(steep_time, tft.color565(255, 165, 0));
         break;
       case State::STEEPING:
       {
         time_t now = time(nullptr);
         uint32_t time_left = steep_time - (now - state_time);
-        displayTime(time_left, TFT_WHITE);
+        displayTime(time_left, tft.color565(0, 255, 0));
         break;
       }
       case State::STOPPING:
-        displayTime(0, TFT_RED);
+        displayTime(0, tft.color565(255, 165, 0));
         break;
       case State::SAVER:
         screensaverLife(&tft);
+        break;
+      case State::SPLASH:
+        displaySplash();
+        break;
+      case State::CONFIG:
+        displayConfig();
         break;
     }
     delay(10);
   }
 }
 
+static void displayInit()
+{
+  dlog.info(TAG, "displayInit");
+  //Set up the display
+  tft.init();
+  tft.setRotation(3);
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextSize(1);
+  tft.setTextColor(TFT_WHITE);
+  tft.setCursor(0, 0);
+  dlog.info(TAG, "displayInit: create display task");
+  xTaskCreatePinnedToCore(displayTask, "display", 4096, nullptr, 1, nullptr, 1);
+}
+
 static void setState(State s, bool clear = false)
 {
+  dlog.info(TAG, "setState: %s -> %s", stateName(state), stateName(s));
   state = s;
   state_time = time(nullptr);
   if (clear)
@@ -153,7 +212,9 @@ void setup()
   button.begin();
   encoder = new RotaryEncoder(PIN_ROTB, PIN_ROTA, RotaryEncoder::LatchMode::FOUR3);
   encoder->setPosition(steep_time);
-  setState(State::IDLE);
+
+  setState(State::SPLASH, true);
+
   dlog.info(TAG, "setup: io begin");
   io.begin();
   dlog.info(TAG, "setup: m begin");
@@ -172,13 +233,19 @@ void setup()
   m.off([](){
     dlog.info(TAG, "m.off done!");
   }, 1000);
-  dlog.info(TAG, "setup: create display task");
-  xTaskCreatePinnedToCore(displayTask, "display", 4096, nullptr, 1, nullptr, 1);
+  delay(2000); // make sure the splash screen is visable for a few seconds
+  bool start_config = digitalRead(PIN_ROTSW) == 0;
+  if (start_config)
+  {
+    cp.startPortal("TeaSteeper");
+  }
+  setState(start_config ? State::CONFIG : State::IDLE, true);
   dlog.info(TAG, "setup: done");
 }
 
 void loop()
 {
+  cp.poll();
   button.read();
   // if the screen saver is on ignore the encoder and 
   // go back to idle when the button is pressed
@@ -213,7 +280,12 @@ void loop()
   }
 
   time_t now = time(nullptr);
-  
+  if (button.pressedFor(5000))
+  {
+    dlog.info(TAG, "loop: RESETTING!!!!!!");
+    delay(100);
+    ESP.restart();
+  }
   switch(state)
   {
     case State::IDLE:
@@ -231,7 +303,7 @@ void loop()
           }, 1000);
         }, 1000);
       }
-      if (button.wasPressed())
+      if (button.wasReleased())
       {
         if (steep_time == 42)
         {
