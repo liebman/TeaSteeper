@@ -218,6 +218,19 @@ void loop()
   {
     case State::IDLE:
     {
+      // detect that arm was pushed off home position and correct.
+      if (!io.isUpperLimit())
+      {
+        dlog.info(TAG, "loop: arm was physically moved, correcting!");
+        setState(State::STOPPING);
+        m.step(UStepper::FORWARD, 50, nullptr, [](){
+          m.step(UStepper::REVERSE, 500, nullptr, [](){
+            dlog.info(TAG, "loop: state now IDLE");
+            m.off(nullptr, 1000);
+            setState(State::IDLE);
+          }, 1000);
+        }, 1000);
+      }
       if (button.wasPressed())
       {
         if (steep_time == 42)
@@ -260,7 +273,6 @@ void loop()
         m.step(UStepper::REVERSE, 500, nullptr, [](){
           dlog.info(TAG, "loop: state now IDLE");
           m.off(nullptr, 1000);
-          state_time = 0;
           setState(State::IDLE);
         }, 1000);
       }
