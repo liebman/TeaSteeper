@@ -251,7 +251,7 @@ void loop()
   // go back to idle when the button is pressed
   if (state == State::SAVER)
   {
-    if (button.wasPressed())
+    if (button.wasReleased())
     {
       dlog.info(TAG, "loop: stop screensaver");
       setState(State::IDLE, true);
