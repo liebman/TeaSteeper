@@ -32,6 +32,8 @@
 #include "EasyButton.h"
 #include "RotaryEncoder.h"
 #include "ConfigPortal.h"
+#include "elephant.h"
+#include "elephant_profile.h"
 #include "version.h"
 
 extern void screensaverLife(TFT_eSPI* tft);
@@ -55,6 +57,12 @@ static RotaryEncoder *encoder;
 static TFT_eSPI tft;
 static ConfigPortal cp;
 
+static const uint16_t elephant_step = 5;
+static uint16_t       elephant_walking_buffer_sz = max(elephant_profile_width, elephant_profile_height) + 2*elephant_step;
+static TFT_eSprite    elephant_walking(&tft);
+static TFT_eSprite    elephant_walking_buffer(&tft);
+static TFT_eSprite    elephant_looking(&tft);
+
 enum class State {
   IDLE,
   STARTING,
@@ -62,10 +70,11 @@ enum class State {
   STOPPING,
   SAVER,
   SPLASH,
+  EASTER,
   CONFIG
 };
 
-static volatile State    state        = State::IDLE;
+static volatile State    state        = State::SPLASH;
 static volatile time_t   state_time   = 0;
 static volatile uint32_t steep_time   = 60;
 static volatile bool     clear_screen = false;
@@ -81,9 +90,34 @@ static const char* stateName(State s)
     case State::STOPPING: return "STOPPING";
     case State::SAVER:    return "SAVER";
     case State::SPLASH:   return "SPLASH";
+    case State::EASTER:   return "EASTER";
     case State::CONFIG:   return "CONFIG";
     default:              return "UNKNOWN";
   }
+}
+
+static void setState(State s, bool clear = false)
+{
+  dlog.info(TAG, "setState: %s -> %s", stateName(state), stateName(s));
+  state = s;
+  state_time = time(nullptr);
+  if (clear)
+  {
+    clear_screen = true;
+  }
+}
+
+static void startSteep(bool clean_screen = false)
+{
+  dlog.info(TAG, "startSteep");
+  setState(State::STARTING, clean_screen);
+  m.step(UStepper::FORWARD, 250, nullptr, [](){
+    if (state == State::STARTING)
+    {
+      m.off(nullptr, 1000);
+      setState(State::STEEPING);
+    }
+  }, 1000);
 }
 
 static void displayTime(uint32_t value, uint16_t color)
@@ -131,6 +165,39 @@ static void displayConfig()
   tft.println("SSID: TeaSteeper");
 }
 
+static void displayEaster()
+{
+  static int16_t x = 0;
+  static uint32_t look = 0;
+
+  if (look != 0)
+  {
+    if (millis()-look > 2000)
+    {
+      look = 0;
+      startSteep(true);
+      return;
+    }
+    x = TFT_HEIGHT-elephant_width;
+    elephant_looking.pushSprite(x, 0);
+    return;
+  }
+
+  int16_t y = TFT_WIDTH/2;
+  tft.setPivot(x, y);
+  int16_t tilt = (x/elephant_step)&1 ? 5 : -5;
+  elephant_walking_buffer.fillSprite(TFT_BLACK);
+  elephant_walking.pushRotated(&elephant_walking_buffer, tilt);
+  elephant_walking_buffer.pushRotated(0);
+  x += elephant_step;
+  if (x > 240+elephant_walking_buffer_sz/2)
+  {
+    x = 0;
+    look = millis();
+  }
+  delay(90);
+}
+
 static void displayTask(void* data)
 {
   (void)data;
@@ -168,6 +235,13 @@ static void displayTask(void* data)
       case State::SPLASH:
         displaySplash();
         break;
+      case State::EASTER:
+        displayEaster();
+        //elephant_looking.pushSprite(0, 0);
+        //tft.setPivot(120, 67);
+        //elephant_walking.pushRotated(45);
+        break;
+
       case State::CONFIG:
         displayConfig();
         break;
@@ -190,17 +264,6 @@ static void displayInit()
   xTaskCreatePinnedToCore(displayTask, "display", 4096, nullptr, 1, nullptr, 1);
 }
 
-static void setState(State s, bool clear = false)
-{
-  dlog.info(TAG, "setState: %s -> %s", stateName(state), stateName(s));
-  state = s;
-  state_time = time(nullptr);
-  if (clear)
-  {
-    clear_screen = true;
-  }
-}
-
 void setup()
 {
   Serial.begin(115200);
@@ -209,11 +272,27 @@ void setup()
   dlog.info(TAG, "setup: Starting!");
 
   displayInit();
+
+  // initialize sprites
+  dlog.info(TAG, "setup: initialize sprites");
+  elephant_looking.createSprite(elephant_width, elephant_height);
+  elephant_looking.setSwapBytes(true);
+  elephant_looking.pushImage(0, 0, elephant_width, elephant_height, elephant);
+  elephant_walking.setPivot(elephant_width/2, elephant_height/2);
+
+  elephant_walking.createSprite(elephant_width, elephant_height);
+  elephant_walking.setSwapBytes(true);
+  elephant_walking.pushImage(0, 0, elephant_profile_width, elephant_profile_height, elephant_profile);
+  elephant_walking.setPivot(elephant_profile_width/2, elephant_profile_height/2);
+
+  elephant_walking_buffer.createSprite(elephant_walking_buffer_sz, elephant_walking_buffer_sz);
+  elephant_walking_buffer.setPivot(elephant_walking_buffer_sz/2, elephant_walking_buffer_sz/2);
+
+
+  dlog.info(TAG, "setup: initialze button and encoder");
   button.begin();
   encoder = new RotaryEncoder(PIN_ROTB, PIN_ROTA, RotaryEncoder::LatchMode::FOUR3);
   encoder->setPosition(steep_time);
-
-  setState(State::SPLASH, true);
 
   dlog.info(TAG, "setup: io begin");
   io.begin();
@@ -257,6 +336,12 @@ void loop()
       setState(State::IDLE, true);
       return;
     }
+    delay(1);
+    return;
+  }
+  if (state == State::EASTER)
+  {
+    delay(1);
     return;
   }
 
@@ -305,22 +390,13 @@ void loop()
       }
       if (button.wasReleased())
       {
-        if (steep_time == 42)
+        if (steep_time % 60 == 42)
         {
-          dlog.info(TAG, "loop: 42! starting screensaver!");
-          setState(State::SAVER, true);
+          dlog.info(TAG, "loop: 42! starting easter egg!");
+          setState(State::EASTER, true);
           break;
         }
-        dlog.info(TAG, "loop: state now STARTING");
-        setState(State::STARTING);
-        m.step(UStepper::FORWARD, 250, nullptr, [](){
-          if (state == State::STARTING)
-          {
-            dlog.info(TAG, "loop: state now STEEPING");
-            m.off(nullptr, 1000);
-            setState(State::STEEPING);
-          }
-        }, 1000);
+        startSteep();
       }
       else
       {
