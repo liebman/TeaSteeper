@@ -62,6 +62,8 @@ static uint16_t       elephant_walking_buffer_sz = max(elephant_profile_width, e
 static TFT_eSprite    elephant_walking(&tft);
 static TFT_eSprite    elephant_walking_buffer(&tft);
 static TFT_eSprite    elephant_looking(&tft);
+static int16_t        easter_x;
+static uint32_t       easter_look;
 
 enum class State {
   IDLE,
@@ -165,35 +167,38 @@ static void displayConfig()
   tft.println("SSID: TeaSteeper");
 }
 
+static void startEaster()
+{
+  easter_x    = 0;
+  easter_look = 0;
+  setState(State::EASTER, true);
+}
+
 static void displayEaster()
 {
-  static int16_t x = 0;
-  static uint32_t look = 0;
-
-  if (look != 0)
+  if (easter_look != 0)
   {
-    if (millis()-look > 2000)
+    if (millis()-easter_look > 2000)
     {
-      look = 0;
+      easter_look = 0;
       startSteep(true);
       return;
     }
-    x = TFT_HEIGHT-elephant_width;
-    elephant_looking.pushSprite(x, 0);
+    easter_x = TFT_HEIGHT-elephant_width;
+    elephant_looking.pushSprite(easter_x, 0);
     return;
   }
 
-  int16_t y = TFT_WIDTH/2;
-  tft.setPivot(x, y);
-  int16_t tilt = (x/elephant_step)&1 ? 5 : -5;
+  int16_t y = (TFT_WIDTH-elephant_walking_buffer_sz)/2;
+  int16_t tilt = (easter_x/elephant_step)&1 ? 5 : -5;
   elephant_walking_buffer.fillSprite(TFT_BLACK);
   elephant_walking.pushRotated(&elephant_walking_buffer, tilt);
-  elephant_walking_buffer.pushRotated(0);
-  x += elephant_step;
-  if (x > 240+elephant_walking_buffer_sz/2)
+  elephant_walking_buffer.pushSprite(easter_x-elephant_profile_width, y);
+  easter_x += elephant_step;
+  if (easter_x > TFT_HEIGHT+elephant_profile_width/2)
   {
-    x = 0;
-    look = millis();
+    easter_x = 0;
+    easter_look = millis();
   }
   delay(90);
 }
@@ -326,9 +331,9 @@ void loop()
 {
   cp.poll();
   button.read();
-  // if the screen saver is on ignore the encoder and 
+  // if the screen saver or easter is on ignore the encoder and 
   // go back to idle when the button is pressed
-  if (state == State::SAVER)
+  if (state == State::SAVER || state == State::EASTER)
   {
     if (button.wasReleased())
     {
@@ -336,11 +341,6 @@ void loop()
       setState(State::IDLE, true);
       return;
     }
-    delay(1);
-    return;
-  }
-  if (state == State::EASTER)
-  {
     delay(1);
     return;
   }
@@ -393,7 +393,7 @@ void loop()
         if (steep_time % 60 == 42)
         {
           dlog.info(TAG, "loop: 42! starting easter egg!");
-          setState(State::EASTER, true);
+          startEaster();
           break;
         }
         startSteep();
