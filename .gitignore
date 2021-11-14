@@ -14,5 +14,5 @@
 /kicad/ZoomBox_bom*.csv
 /kicad/ZoomBox.xml
 /enclosure/*.3mf
-/enclosure
+/enclosure/*.FCStd1
 .idea
