@@ -11,8 +11,6 @@
 /kicad/*-bak
 /kicad/*.zip
 /kicad/libs/*.bck
-/kicad/ZoomBox_bom*.csv
-/kicad/ZoomBox.xml
 /enclosure/*.3mf
 /enclosure/*.FCStd1
 .idea
