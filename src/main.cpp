@@ -78,7 +78,7 @@ enum class State {
 
 static volatile State    state        = State::SPLASH;
 static volatile time_t   state_time   = 0;
-static volatile uint32_t steep_time   = 60;
+static volatile uint32_t steep_time   = 300;
 static volatile bool     clear_screen = false;
 static volatile bool     syncing      = true;
 
@@ -113,7 +113,7 @@ static void startSteep(bool clean_screen = false)
 {
   dlog.info(TAG, "startSteep");
   setState(State::STARTING, clean_screen);
-  m.step(UStepper::FORWARD, 250, nullptr, [](){
+  m.step(UStepper::FORWARD, 200, nullptr, [](){
     if (state == State::STARTING)
     {
       m.off(nullptr, 1000);
