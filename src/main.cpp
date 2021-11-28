@@ -359,14 +359,13 @@ void loop()
       encoder->setPosition(pos);
     }
 
-
     if (pos != steep_time)
     {
       steep_time = pos;
     }
   }
 
-  if (button.pressedFor(5000))
+  if (button.pressedFor(5000) && state != State::BLANK)
   {
     dlog.info(TAG, "loop: RESETTING!!!!!!");
     delay(100);
@@ -442,8 +441,20 @@ void loop()
       {
         dlog.info(TAG, "loop: stop BLANK");
         setState(State::IDLE, true);
+        dlog.info(TAG, "loop: turning on backlight");
+        digitalWrite(TFT_BL, HIGH);
+      }
+
+      if (button.isReleased())
+      {
+        dlog.info(TAG, "loop: start light sleep!");
+        delay(100);
+        esp_sleep_enable_ext0_wakeup(GPIO_NUM_2, 0);
+        esp_light_sleep_start();
+        dlog.info(TAG, "loop: wakeup from light sleep!");
       }
       break;
+
     case State::SAVER:
       if (button.wasReleased())
       {
@@ -462,6 +473,7 @@ void loop()
           delay(1);
         }
         delay(40);
+#if 0
         dlog.info(TAG, "loop: start light sleep!");
         delay(100);
         esp_sleep_enable_ext0_wakeup(GPIO_NUM_2, 0);
@@ -470,6 +482,7 @@ void loop()
         dlog.info(TAG, "loop: wakeup from light sleep!");
         dlog.info(TAG, "loop: turning on backlight");
         digitalWrite(TFT_BL, HIGH);
+#endif
       }
       break;
   }
