@@ -23,6 +23,7 @@
  */
 
 #include <Arduino.h>
+#include <esp_sleep.h>
 #include <SPI.h>
 #include <TFT_eSPI.h>
 #include "Log.h"
@@ -35,6 +36,14 @@
 #include "elephant.h"
 #include "elephant_profile.h"
 #include "version.h"
+
+#ifndef SCREEN_SAVER_TIME
+#define SCREEN_SAVER_TIME 300
+#endif
+
+#ifndef SCREEN_BLANK_TIME
+#define SCREEN_BLANK_TIME 600
+#endif
 
 extern void screensaverLife(TFT_eSPI* tft);
 
@@ -73,6 +82,7 @@ enum class State {
   SAVER,
   SPLASH,
   EASTER,
+  BLANK,
   CONFIG
 };
 
@@ -94,6 +104,7 @@ static const char* stateName(State s)
     case State::SPLASH:   return "SPLASH";
     case State::EASTER:   return "EASTER";
     case State::CONFIG:   return "CONFIG";
+    case State::BLANK:    return "BLANK";
     default:              return "UNKNOWN";
   }
 }
@@ -214,6 +225,7 @@ static void displayTask(void* data)
     {
       clear_screen = false;
       tft.fillScreen(TFT_BLACK);
+      dlog.info(TAG, "displayTask: cleared screen!");
     }
 
     switch (state)
@@ -242,9 +254,6 @@ static void displayTask(void* data)
         break;
       case State::EASTER:
         displayEaster();
-        //elephant_looking.pushSprite(0, 0);
-        //tft.setPivot(120, 67);
-        //elephant_walking.pushRotated(45);
         break;
 
       case State::CONFIG:
@@ -331,46 +340,39 @@ void loop()
 {
   cp.poll();
   button.read();
-  // if the screen saver or easter is on ignore the encoder and 
-  // go back to idle when the button is pressed
-  if (state == State::SAVER || state == State::EASTER)
-  {
-    if (button.wasReleased())
-    {
-      dlog.info(TAG, "loop: stop screensaver");
-      setState(State::IDLE, true);
-      return;
-    }
-    delay(1);
-    return;
-  }
-
-  encoder->tick();
-
-  long pos = encoder->getPosition();
-  if (pos < 0)
-  {
-    pos = 0;
-    encoder->setPosition(pos);
-  } else if (pos > 599)
-  {
-    pos = 599;
-    encoder->setPosition(pos);
-  }
-
-
-  if (pos != steep_time)
-  {
-    steep_time = pos;
-  }
 
   time_t now = time(nullptr);
+
+  // tick the encoder except when we are in SAVER, BLANK, or EASTER states
+  if (state != State::SAVER && state != State::BLANK && state != State::EASTER)
+  {
+    encoder->tick();
+
+    long pos = encoder->getPosition();
+    if (pos < 0)
+    {
+      pos = 0;
+      encoder->setPosition(pos);
+    } else if (pos > 599)
+    {
+      pos = 599;
+      encoder->setPosition(pos);
+    }
+
+
+    if (pos != steep_time)
+    {
+      steep_time = pos;
+    }
+  }
+
   if (button.pressedFor(5000))
   {
     dlog.info(TAG, "loop: RESETTING!!!!!!");
     delay(100);
     ESP.restart();
   }
+
   switch(state)
   {
     case State::IDLE:
@@ -400,8 +402,8 @@ void loop()
       }
       else
       {
-        // screen saver starts after 5 minutes idle
-        if ((now - state_time) > 300)
+        // screen saver starts after some amount of idle time
+        if ((now - state_time) > SCREEN_SAVER_TIME)
         {
           dlog.info(TAG, "loop: idle! starting screensaver!");
           setState(State::SAVER, true);
@@ -427,6 +429,48 @@ void loop()
       break;
     }
     case State::STOPPING:
+      break;
+    case State::EASTER:
+      if (button.wasReleased())
+      {
+        dlog.info(TAG, "loop: stop EASTER");
+        setState(State::IDLE, true);
+      }
+      break;
+    case State::BLANK:
+      if (button.wasReleased())
+      {
+        dlog.info(TAG, "loop: stop BLANK");
+        setState(State::IDLE, true);
+      }
+      break;
+    case State::SAVER:
+      if (button.wasReleased())
+      {
+        dlog.info(TAG, "loop: stop SAVER");
+        setState(State::IDLE, true);
+      }
+      // screen blank starts after 5 minutes in saver
+      if ((now - state_time) > SCREEN_BLANK_TIME)
+      {
+        dlog.info(TAG, "loop: idle! starting blank!");
+        digitalWrite(TFT_BL, LOW);
+        setState(State::BLANK, true);
+        dlog.info(TAG, "loop: waiting for screen to be cleared");
+        while(clear_screen)
+        {
+          delay(1);
+        }
+        delay(40);
+        dlog.info(TAG, "loop: start light sleep!");
+        delay(100);
+        esp_sleep_enable_ext0_wakeup(GPIO_NUM_2, 0);
+        esp_light_sleep_start();
+
+        dlog.info(TAG, "loop: wakeup from light sleep!");
+        dlog.info(TAG, "loop: turning on backlight");
+        digitalWrite(TFT_BL, HIGH);
+      }
       break;
   }
 

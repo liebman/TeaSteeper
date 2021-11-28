@@ -128,7 +128,7 @@ void screensaverLife(TFT_eSPI* tft) {
 
   if (gen_left == 0)
   {
-    dlog.info(TAG, "starting new generation!");
+    dlog.debug(TAG, "starting new generation!");
     initGrid();
     tft->fillScreen(TFT_BLACK);
     drawGrid(tft);
