@@ -45,6 +45,14 @@
 #define SCREEN_BLANK_TIME 600
 #endif
 
+#ifndef SPLASH_NAME
+#define SPLASH_NAME "Someone Special"
+#endif
+
+#ifndef SPLASH_DATE
+#define SPLASH_DATE "Christmas 2021"
+#endif
+
 extern void screensaverLife(TFT_eSPI* tft);
 
 static const char* TAG = "main";
@@ -161,9 +169,9 @@ static void displaySplash()
   tft.println();
   tft.print("For ");
   tft.setTextColor(orange, TFT_BLACK);
-  tft.println("Liz Liebman");
+  tft.println(SPLASH_NAME);
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  tft.println("Christmas 2021");
+  tft.println(SPLASH_DATE);
 }
 
 static void displayConfig()
@@ -437,18 +445,18 @@ void loop()
       }
       break;
     case State::BLANK:
-      if (button.wasReleased())
+      if (button.wasReleased()) // was seen pressed and released
       {
         dlog.info(TAG, "loop: stop BLANK");
         setState(State::IDLE, true);
         dlog.info(TAG, "loop: turning on backlight");
         digitalWrite(TFT_BL, HIGH);
       }
-
-      if (button.isReleased())
+      else if (button.isReleased()) // is currently released
       {
         dlog.info(TAG, "loop: start light sleep!");
         delay(100);
+        esp_sleep_enable_timer_wakeup(10000000); // sleep 10 seconds at a time
         esp_sleep_enable_ext0_wakeup(GPIO_NUM_2, 0);
         esp_light_sleep_start();
         dlog.info(TAG, "loop: wakeup from light sleep!");
@@ -473,16 +481,6 @@ void loop()
           delay(1);
         }
         delay(40);
-#if 0
-        dlog.info(TAG, "loop: start light sleep!");
-        delay(100);
-        esp_sleep_enable_ext0_wakeup(GPIO_NUM_2, 0);
-        esp_light_sleep_start();
-
-        dlog.info(TAG, "loop: wakeup from light sleep!");
-        dlog.info(TAG, "loop: turning on backlight");
-        digitalWrite(TFT_BL, HIGH);
-#endif
       }
       break;
   }
