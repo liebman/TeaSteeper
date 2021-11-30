@@ -99,6 +99,20 @@ static volatile time_t   state_time   = 0;
 static volatile uint32_t steep_time   = 300;
 static volatile bool     clear_screen = false;
 static volatile bool     syncing      = true;
+static volatile bool     stopping     = false;
+
+void logUptimeFirst(DLogBuffer& buffer, DLogLevel level)
+{
+    (void)level; // not used
+    uint32_t now = millis();
+    float seconds = (now % 60000L) / 1000.0;
+    uint32_t days = now / 86400000;
+    now -= days * 86400000;
+    uint32_t hours = now / 3600000;
+    now -= hours * 3600000;
+    uint32_t minutes = now / 60000;
+    buffer.printf("%03dd%02dh%02dm%02.3f ", days, hours, minutes, seconds);
+}
 
 static const char* stateName(State s)
 {
@@ -290,6 +304,7 @@ void setup()
 {
   Serial.begin(115200);
   dlog.begin(new DLogPrintWriter(Serial));
+  dlog.setPreFunc(&logUptimeFirst);
   delay(200);
   dlog.info(TAG, "setup: Starting!");
 
@@ -448,7 +463,7 @@ void loop()
       if (button.wasReleased()) // was seen pressed and released
       {
         dlog.info(TAG, "loop: stop BLANK");
-        setState(State::IDLE, true);
+        setState(State::IDLE, false);
         dlog.info(TAG, "loop: turning on backlight");
         digitalWrite(TFT_BL, HIGH);
       }
@@ -457,7 +472,8 @@ void loop()
         dlog.info(TAG, "loop: start light sleep!");
         delay(100);
         esp_sleep_enable_timer_wakeup(10000000); // sleep 10 seconds at a time
-        esp_sleep_enable_ext0_wakeup(GPIO_NUM_2, 0);
+        esp_sleep_enable_ext0_wakeup((gpio_num_t)PIN_ROTSW, 0);
+        //esp_sleep_enable_ext1_wakeup(BIT(13), ESP_EXT1_WAKEUP_ANY_HIGH);
         esp_light_sleep_start();
         dlog.info(TAG, "loop: wakeup from light sleep!");
       }
