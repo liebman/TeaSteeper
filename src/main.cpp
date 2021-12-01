@@ -37,6 +37,10 @@
 #include "elephant_profile.h"
 #include "version.h"
 
+#ifndef STEEP_TIME
+#define STEEP_TIME 150 // default steep time 2:30
+#endif
+
 #ifndef SCREEN_SAVER_TIME
 #define SCREEN_SAVER_TIME 300
 #endif
@@ -96,7 +100,7 @@ enum class State {
 
 static volatile State    state        = State::SPLASH;
 static volatile time_t   state_time   = 0;
-static volatile uint32_t steep_time   = 300;
+static volatile uint32_t steep_time   = STEEP_TIME;
 static volatile bool     clear_screen = false;
 static volatile bool     syncing      = true;
 static volatile bool     stopping     = false;
@@ -469,13 +473,12 @@ void loop()
       }
       else if (button.isReleased()) // is currently released
       {
-        dlog.info(TAG, "loop: start light sleep!");
+        dlog.debug(TAG, "loop: start light sleep!");
         delay(100);
         esp_sleep_enable_timer_wakeup(10000000); // sleep 10 seconds at a time
         esp_sleep_enable_ext0_wakeup((gpio_num_t)PIN_ROTSW, 0);
-        //esp_sleep_enable_ext1_wakeup(BIT(13), ESP_EXT1_WAKEUP_ANY_HIGH);
         esp_light_sleep_start();
-        dlog.info(TAG, "loop: wakeup from light sleep!");
+        dlog.debug(TAG, "loop: wakeup from light sleep!");
       }
       break;
 
